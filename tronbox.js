@@ -8,8 +8,8 @@ module.exports = {
       privateKey: process.env.PRIVATE_KEY,
       userFeePercentage: 100,
       feeLimit: 1000 * 1e6,
-      fullHost: 'https://api.trongrid.io',
-      solidityNode: 'https://api.trongrid.io',
+      fullHost: `https://trx.nownodes.io/${process.env.NOWNODES_API_KEY}`,
+      solidityNode: `https://trx.nownodes.io/${process.env.NOWNODES_API_KEY}`,
       network_id: '1'
     },
     shasta: {
