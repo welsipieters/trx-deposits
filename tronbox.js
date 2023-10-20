@@ -9,6 +9,7 @@ module.exports = {
       userFeePercentage: 100,
       feeLimit: 1000 * 1e6,
       fullHost: 'https://api.trongrid.io',
+      solidityNode: 'https://api.trongrid.io',
       network_id: '1'
     },
     shasta: {
