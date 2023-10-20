@@ -1,0 +1,23 @@
+{
+  "name": "trondeposit",
+  "version": "1.0.0",
+  "description": "",
+  "main": "tronbox-config.js",
+  "directories": {
+    "test": "test"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@openzeppelin/contracts": "4.9.3",
+    "axios": "^1.5.1",
+    "dotenv": "^16.3.1",
+    "mysql": "^2.18.1",
+    "mysql2": "^3.6.2",
+    "node-cron": "^3.0.2",
+    "tronweb": "^5.3.1"
+  }
+}
