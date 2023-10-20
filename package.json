@@ -7,7 +7,9 @@
     "test": "test"
   },
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node scripts/index.js",
+    "migrate": "node ./scripts/migrations/1-depositAddress.js && node ./scripts/migrations/2-depositTable.js && node ./scripts/migrations/3-sweep.js"
   },
   "author": "",
   "license": "ISC",
