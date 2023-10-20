@@ -4,6 +4,7 @@ const cron = require('node-cron');
 const BlockchainService = require("./BlockchainService");
 const blockchainConfig = require('./blockchainConfig');
 const fetchAddressesFromExternalAPI = require("./fetchAddressesFromExternalAPI");
+const sendMattermostAlert = require("./matterMost");
 
 const config = {
     knakenURL: process.env.KNAKEN_URL,
@@ -52,5 +53,6 @@ async function checkForTransfers(bcs) {
 
 
 main().catch(error => {
+    sendMattermostAlert(error);
     console.error(error)
 })
