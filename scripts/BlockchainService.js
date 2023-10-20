@@ -90,7 +90,7 @@ class BlockchainService {
                     'confirmations': sweep.core_notifications+1
                 });
             }
-
+            console.log(deposits)
 
             try {
                 // Make the API call to post the transactions
@@ -104,7 +104,10 @@ class BlockchainService {
 
                 if (response.status === 200) {
                     console.log("Transactions posted successfully", response.data);
-                    sweepsToNotify.each(sweep => databaseService.incrementCoreNotification(sweep.id))
+                    for (const sweep of sweepsToNotify) {
+                        databaseService.incrementCoreNotification(sweep.id)
+                    }
+
                 } else {
                     console.error("Failed to post transactions:", response.data);
                 }
@@ -152,7 +155,7 @@ class BlockchainService {
                    const blockNumber = await this.getCurrentBlockNumber()
                    const sweepData = {
                        address: deposit.to_address,
-                       amount: deposit.amount_real,
+                       amount: deposit.amount,
                        transactionHash: txInfo.id,
                        token_name: deposit.currency_name,
                        tokenContractAddress: deposit.currency_address,
@@ -164,7 +167,7 @@ class BlockchainService {
 
                } catch (e) {
                    console.error('error', e)
-                   await databaseService.updateProcessedStatusByHash(deposit.hash, null, false)
+                   await databaseService.updateProcessedStatusByHash(deposit.hash, "NONE", false)
                }
             }
         }
@@ -183,6 +186,10 @@ class BlockchainService {
             amount: BigInt(event.value) / BigInt(10 ** event.token_info.decimals),
             amount_real: event.value
         };
+
+        if (depositData.fromAddress === depositData.toAddress) {
+            return
+        }
 
         if (!blockchainConfig.allowedTokens.some(addr => addr.toLowerCase() === depositData.currencyAddress.toLowerCase())) {
             return;

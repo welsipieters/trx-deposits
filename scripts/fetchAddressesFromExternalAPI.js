@@ -1,12 +1,13 @@
 const axios = require('axios');
 const databaseService = require('./DatabaseService');
-
+const blockchainConfig = require('./blockchainConfig');
 const fetchAddressesFromExternalAPI = async (bcs, config) => {
     const getEndpoint = 'get-deposit-address-requests';
     const setEndpoint = 'set-deposit-addresses';
     const params = {
         walletAPIKey: config.keys.admin,
-        currency: 'TRX',
+        network: 'TRON',
+        currency: 'trx'
     };
 
     // Fetch the wanted addresses
@@ -34,11 +35,11 @@ const fetchAddressesFromExternalAPI = async (bcs, config) => {
         }
 
         if (addressEntity) {
-            addressMap[wantedAddress.id] = addressEntity.deposit_address;
+            const hexAddress = '0x' + addressEntity.deposit_address.slice(24);
+
+            addressMap[wantedAddress.id] = blockchainConfig.tronWeb.address.fromHex(hexAddress);
         }
     }
-
-    console.log(addressMap);
 
     // Send the address map back to the external API
     if (Object.keys(addressMap).length === 0) {

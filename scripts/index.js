@@ -13,7 +13,7 @@ const config = {
     }
 };
 const main = async () => {
-    const hexAddress = '0x93fa4436ff270624c7c2517ea901881c4ae7b824';
+    const hexAddress = '0x66880e6a8c7d456b8f5600b81930f8f9fc6cd44b';
 
     const base58Address = blockchainConfig.tronWeb.address.fromHex(hexAddress);
     console.log(base58Address)
@@ -40,7 +40,7 @@ const main = async () => {
     });
 
     setTimeout(async () =>  {
-        bcs.sweepTokens()
+        fetchAddressesFromExternalAPI(bcs, config)
     }, 100)
 }
 
