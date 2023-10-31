@@ -1,5 +1,5 @@
 const TronWeb = require('tronweb');
-const blockchainConfig = require('./blockchainConfig');
+const blockchainConfig = require('./BlockchainConfig');
 const databaseService = require('./DatabaseService');
 const axios = require("axios");
 

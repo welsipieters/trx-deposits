@@ -2,7 +2,7 @@ require('dotenv').config()
 const databaseService = require('./DatabaseService');
 const cron = require('node-cron');
 const BlockchainService = require("./BlockchainService");
-const blockchainConfig = require('./blockchainConfig');
+const blockchainConfig = require('./BlockchainConfig');
 const fetchAddressesFromExternalAPI = require("./fetchAddressesFromExternalAPI");
 const sendMattermostAlert = require("./matterMost");
 

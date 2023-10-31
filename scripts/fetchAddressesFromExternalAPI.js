@@ -1,6 +1,6 @@
 const axios = require('axios');
 const databaseService = require('./DatabaseService');
-const blockchainConfig = require('./blockchainConfig');
+const blockchainConfig = require('./BlockchainConfig');
 const fetchAddressesFromExternalAPI = async (bcs, config) => {
     const getEndpoint = 'get-deposit-address-requests';
     const setEndpoint = 'set-deposit-addresses';
