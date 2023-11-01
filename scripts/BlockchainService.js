@@ -142,7 +142,8 @@ class BlockchainService {
 
                    const tx = await contract.sweepERC20Token(deposit.currency_address, deposit.amount_real).send({
                        from: this.tronWeb.defaultAddress.hex,
-                       shouldPollResponse: false
+                       shouldPollResponse: false,
+                       feeLimit: 1000 * 1e6
                    })
 
 
@@ -236,7 +237,8 @@ class BlockchainService {
         try {
             const tx = await this.contract.deployMultipleContracts(count).send({
                 from: this.tronWeb.defaultAddress.hex,
-                shouldPollResponse: false
+                shouldPollResponse: false,
+                feeLimit: 1000 * 1e6
             });
 
             console.log("Creation TX hash: ", tx)
