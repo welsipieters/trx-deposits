@@ -8,6 +8,7 @@ const MAX_ATTEMPTS = 100;  // Maximum number of attempts to check the transactio
 const DELAY_INTERVAL = 5000;  // Delay of 5 seconds between each check
 const tokenDecimalCache = {};
 
+const FEE_LIMIT = 1000 * 1e6;
 
 
 class BlockchainService {
@@ -38,11 +39,7 @@ class BlockchainService {
     }
 
     async getPastEvents(toAddress, sinceTimestamp = 0, untilTimestamp = Date.now()) {
-        const hexAddress = '0x' + toAddress.slice(24);
-
-// Convert to base58
-        const base58Address = this.tronWeb.address.fromHex(hexAddress);
-        const url = `${blockchainConfig.fullHost}/v1/accounts/${base58Address}/transactions/trc20?only_confirmed=true&only_to=true`;
+        const url = `${blockchainConfig.fullHost}/v1/accounts/${toAddress}/transactions/trc20?only_confirmed=true&only_to=true`;
         const response = await axios.get(url);
         if (response.data && response.data.data) {
             return response.data.data;
@@ -51,28 +48,33 @@ class BlockchainService {
     }
 
     async checkTokenTransfers(end) {
-        console.log("Checking for new transactions. current block number: ", end)
+        console.log("Checking for new transactions. Current block number: ", end);
         const addresses = await databaseService.fetchUsedAddressesFromDB();
-        for (let address of addresses) {
-            console.log(`Checking address ${address.address}`)
-            const events = await this.getPastEvents(address.address, address.last_seen, end)
-            if (events.length > 0) {
-                // console.log(`Found ${events.length} transfer events for ${address.address}`)
-            }
 
-            for (const event of events) {
+        for (let address of addresses) {
+            console.log(`Checking address ${address.address}`);
+            const tokenEvents = await this.getPastEvents(address.address, address.last_seen, end);
+            for (const event of tokenEvents) {
                 try {
                     await this.recordTransferToDB(event);
                 } catch (e) {
-                    console.log("error", e)
+                    console.error("Error recording token transfer to DB:", e);
                 }
             }
 
+            const trxTransfers = await this.getTrxTransfers(address.address, address.last_seen, end);
+            for (const transfer of trxTransfers) {
+                try {
+                    await this.recordTrxTransferToDB(transfer);
+                } catch (e) {
+                    console.error("Error recording TRX transfer to DB:", e);
+                }
+            }
 
-
-            await databaseService.updateLastSeenBlock(address.address, end)
+            await databaseService.updateLastSeenBlock(address.address, end);
         }
     }
+
 
     async notifySweeped(config) {
         try {
@@ -121,56 +123,106 @@ class BlockchainService {
         }
     }
 
+    async fundWalletForGas(walletAddress, amountToFund) {
+        try {
+            const tradeobj = await this.tronWeb.transactionBuilder.sendTrx(
+                walletAddress,
+                this.tronWeb.toSun(amountToFund),
+                this.tronWeb.defaultAddress.base58
+            );
+            const signedtxn = await this.tronWeb.trx.sign(tradeobj);
+            const broadcast = await this.tronWeb.trx.sendRawTransaction(signedtxn);
+
+            if (broadcast.result === true) {
+                console.log(`Attempting to fund ${amountToFund} TRX to wallet ${walletAddress}`)
+            } else {
+                throw new Error('Failed to broadcast transaction');
+            }
+
+            // Now wait for the transaction to be confirmed
+            await this.checkTransactionUntilConfirmed(broadcast.txid);
+
+            console.log(`Funded ${amountToFund} TRX to wallet ${walletAddress}. Transaction ID: ${broadcast.txid}`);
+            return broadcast;
+        } catch (e) {
+            console.error('Error during funding wallet:', e);
+            throw e; // You may want to handle this more gracefully depending on your error handling strategy
+        }
+    }
+
     async sweepTokens() {
         const addresses = await databaseService.fetchUsedAddressesFromDB();
+        const gasFundAmount = process.env.GAS_FUND_AMOUNT_TRON;
 
         for (const address of addresses) {
-            const hexAddress = '0x' + address.address.slice(24);
+            const deposits = await databaseService.findUnprocessedDepositsByToAddress(address.address);
 
-            const base58Address = this.tronWeb.address.fromHex(hexAddress);
-            const deposits = await databaseService.findUnprocessedDepositsByToAddress(base58Address)
-            if (deposits.length == 0) {
+            if (deposits.length === 0) {
                 continue;
             }
 
-            console.log(`Found ${deposits.length} unprocessed deposits for ${address.address}`)
+            console.log(`Found ${deposits.length} unprocessed deposits for ${address.address}`);
+
+            let fundingTransactionHash;
+            try {
+                const fundingReceipt = await this.fundWalletForGas(address.address, gasFundAmount);
+                fundingTransactionHash = fundingReceipt.txid;
+
+                await databaseService.insertWalletFunding(address.address, gasFundAmount, fundingTransactionHash);
+            } catch (e) {
+                console.error('Error during funding for gas:', e);
+                continue;
+            }
+
 
             for (const deposit of deposits) {
+                if (deposit.currency_address === 'TRX') {
+                    continue;
+                }
 
-               try {
-                   const contract = this.tronWeb.contract(blockchainConfig.depositAbi, deposit.to_address);
-
-                   const tx = await contract.sweepERC20Token(deposit.currency_address, deposit.amount_real).send({
-                       from: this.tronWeb.defaultAddress.hex,
-                       shouldPollResponse: false,
-                       feeLimit: 1000 * 1e6
-                   })
-
-
-                   console.log(`Sweeping ${deposit.amount} ${deposit.currency_name} from ${deposit.to_address}. Hash: `, tx)
-                   await databaseService.updateProcessedStatusByHash(deposit.hash, tx, true)
-
-                   const txInfo = await this.checkTransactionUntilConfirmed(tx);
-
-                   console.log(`Successfully swept ${deposit.amount} ${deposit.currency_name} from ${deposit.to_address}`)
-                   const blockNumber = await this.getCurrentBlockNumber()
-                   const sweepData = {
-                       address: deposit.to_address,
-                       amount: deposit.amount,
-                       transactionHash: txInfo.id,
-                       token_name: deposit.currency_name,
-                       tokenContractAddress: deposit.currency_address,
-                       block: blockNumber,
-                       core_notifications: 0
-                   };
-
-                   await databaseService.insertSweep(sweepData);
-
-               } catch (e) {
-                   console.error('error', e)
-                   await databaseService.updateProcessedStatusByHash(deposit.hash, "NONE", false)
-               }
+                try {
+                    await this.sweepERC20Tokens(deposit, address);
+                } catch (e) {
+                    console.error('Error during token sweep:', e);
+                    await databaseService.updateProcessedStatusByHash(deposit.hash, null, false);
+                }
             }
+
+            try {
+                await this.sweepTRX(address, fundingTransactionHash);
+            } catch (e) {
+                console.error('Error during TRX sweep:', e);
+            }
+        }
+    }
+
+    async recordTrxTransferToDB(transfer) {
+        const depositData = {
+            blockNumber: transfer.block_timestamp,
+            fromAddress: transfer.from,
+            toAddress: transfer.to,
+            currencyAddress: 'TRX',
+            currencyName: 'TRX',
+            hash: transfer.transaction_id,
+            process_tx: '',
+            processed: false,
+            amount: BigInt(transfer.value) / BigInt(1e6),
+            amount_real: transfer.value
+        };
+
+        if (depositData.fromAddress === depositData.toAddress) {
+            return;
+        }
+
+        if (process.env.COLD_STORAGE_ADDRESS_TRON.toLowerCase() === depositData.fromAddress.toLowerCase()) {
+            return;
+        }
+
+        // Assuming that TRX is always an allowed token
+        const deposit = await databaseService.findDepositByHash(depositData.hash);
+        if (!deposit) {
+            console.log(`Recording TRX transaction for wallet ${depositData.toAddress}`);
+            await databaseService.insertDeposit(depositData);
         }
     }
 
@@ -207,6 +259,37 @@ class BlockchainService {
 
     }
 
+    async getTrxTransfers(address, startBlock, endBlock) {
+        let transfers = [];
+
+        try {
+            const url = `${blockchainConfig.fullHost}/v1/accounts/${address}/transactions`;
+            const tx = await axios.get(url, {
+                params: {
+                    only_to: true,
+                    only_confirmed: true,
+                    limit: 30, // Adjust the limit as needed
+                }
+            }).catch(error => {
+                console.error('Error fetching TRX transfers:', error);
+            });
+
+
+            transfers = tx.data.data.map(tx => ({
+                block_timestamp: tx.raw_data.timestamp,
+                from:  this.tronWeb.address.fromHex(tx.raw_data.contract[0].parameter.value.owner_address),
+                to: address,
+                value: tx.raw_data.contract[0].parameter.value.amount,
+                transaction_id: tx.txID
+            }));
+        } catch (error) {
+            console.error(`Error fetching TRX transfers for address ${address}:`, error);
+        }
+
+        return transfers;
+    }
+
+
     async checkTransactionUntilConfirmed(txId, attempts = 0) {
         if (attempts >= MAX_ATTEMPTS) {
             throw new Error("Max attempts reached. Transaction not confirmed.");
@@ -229,36 +312,126 @@ class BlockchainService {
     }
 
     async generateAddresses(count) {
-        console.log(`Generating ${count} addresses`)
-        const currentBlock = await this.tronWeb.trx.getCurrentBlock()
-        const currentBlockNumber = currentBlock.block_header.raw_data.timestamp
-        console.log(`Block number: ${JSON.stringify(currentBlockNumber)}`)
+        console.log(`Generating ${count} addresses`);
+        const currentBlock = await this.getCurrentBlockNumber()
+        console.log(`Current block number: ${currentBlock}`);
 
-        try {
-            const tx = await this.contract.deployMultipleContracts(count).send({
-                from: this.tronWeb.defaultAddress.hex,
-                shouldPollResponse: false,
-                feeLimit: 1000 * 1e6
-            });
-
-            console.log("Creation TX hash: ", tx)
-
-            const txInfo = await this.checkTransactionUntilConfirmed(tx);
-
-            // console.log(txInfo)
-
-            this.processReceipt(txInfo, count)
-                .then(deployedAddresses => deployedAddresses.map(address => this.insertAddressIntoDB(address, currentBlockNumber)))
-                .then(saveAddressPromises => Promise.all(saveAddressPromises))
-                .catch(error => console.error('Error processing receipt', error));
-            console.log(`Creating addresses, tx: ${txInfo.id}`)
-            // Return transaction hash immediately
-            return tx;
-        } catch (e) {
-            console.log("error", e)
+        let addresses = [];
+        for (let i = 0; i < count; i++) {
+            const newAddress = await this.tronWeb.createAccount();
+            if (newAddress.address) {
+                addresses.push(newAddress);
+            } else {
+                console.error('Error generating new address:', newAddress);
+            }
         }
 
+        // Process each newly generated address
+        try {
+            const saveAddressPromises = addresses.map(({ address: { base58 }, privateKey }) =>
+                this.insertAddressIntoDB(base58, privateKey, currentBlock)
+            );
+
+            await Promise.all(saveAddressPromises);
+            console.log(`Successfully inserted ${count} addresses into the database.`);
+        } catch (error) {
+            console.error('Error inserting addresses into DB', error);
+        }
+
+        // Return the list of new addresses
+        return addresses;
     }
+
+
+    async sweepERC20Tokens(deposit, address) {
+        const tokenContract = await this.tronWeb.contract().at(deposit.currency_address);
+        const tokenTransfer = await tokenContract.transfer(
+            process.env.COLD_STORAGE_ADDRESS_TRON,
+            deposit.amount_real
+        ).send({ feeLimit: FEE_LIMIT }, address.private_key);
+
+
+        console.log(`Sweeping ${deposit.amount} ${deposit.currency_name} from ${deposit.to_address}. Transaction ID: `, tokenTransfer);
+        await databaseService.updateProcessedStatusByHash(deposit.hash, null, true);
+
+        await this.checkTransactionUntilConfirmed(tokenTransfer);
+
+        const blockNumber = await this.getCurrentBlockNumber();
+        await databaseService.updateProcessedStatusByHash(deposit.hash, tokenTransfer, true);
+        await databaseService.insertSweep({
+            address: deposit.to_address,
+            amount: deposit.amount,
+            transactionHash: tokenTransfer,
+            token_name: deposit.currency_name,
+            tokenContractAddress: deposit.currency_address,
+            block: blockNumber,
+            core_notifications: 0
+        });
+    }
+
+
+    async sweepTRX(address, fundingTransactionHash) {
+        if (!fundingTransactionHash) {
+            throw new Error("Funding transaction hash is required.");
+        }
+        const trxBalanceSUN = await this.tronWeb.trx.getBalance(address.address);
+        const gasFundAmount = process.env.GAS_FUND_AMOUNT_TRON;
+        const estimatedGasSUN = this.tronWeb.toSun(process.env.ESTIMATED_GAS_FEE_TRON);
+
+        // Make sure there is enough balance to cover the gas fee
+        if (trxBalanceSUN <= estimatedGasSUN) {
+            throw new Error("Not enough balance to cover the gas fee.");
+        }
+
+        // Calculate the amount to send by deducting the estimated gas fee
+        const amountToSendSUN = trxBalanceSUN - estimatedGasSUN;
+
+        console.log(`Sending ${this.tronWeb.fromSun(amountToSendSUN)} TRX from ${address.address} to cold storage`);
+
+
+        const tradeobj = await this.tronWeb.transactionBuilder.sendTrx(
+            process.env.COLD_STORAGE_ADDRESS_TRON,
+            amountToSendSUN,
+            this.tronWeb.address.fromPrivateKey(address.private_key)
+        );
+        const signedtxn = await this.tronWeb.trx.sign(tradeobj, address.private_key);
+        const receipt = await this.tronWeb.trx.sendRawTransaction(signedtxn);
+
+        if (receipt.result === true) {
+            await this.checkTransactionUntilConfirmed(receipt.txid);
+            const txInfo = await this.tronWeb.trx.getTransactionInfo(receipt.txid);
+
+            console.log(txInfo)
+
+            const actualGasUsedSUN = txInfo.receipt ? txInfo.receipt.net_fee : 0;
+            console.log(`Actual gas used: ${this.tronWeb.fromSun(actualGasUsedSUN)}`)
+            //transform trx to SUN
+            const gasFund = this.tronWeb.toSun(gasFundAmount)
+            const remaingGasMoney = gasFund - actualGasUsedSUN
+            const netAmountSUN = amountToSendSUN - remaingGasMoney;
+
+            await databaseService.insertSweep({
+                address: address.address,
+                amount: this.tronWeb.fromSun(netAmountSUN),
+                transactionHash: receipt.txid,
+                token_name: 'TRX',
+                tokenContractAddress: 'TRX',
+                block: await this.getCurrentBlockNumber(),
+                core_notifications: 0
+            });
+            console.log(`Sent ${this.tronWeb.fromSun(netAmountSUN)} TRX to cold storage (net amount after gas) Remaining gas money: ${remaingGasMoney}. Transaction ID: ${receipt.txid}`);
+
+            // Update the WalletFunding record with the actual gas used
+            await databaseService.updateWalletFunding(fundingTransactionHash, this.tronWeb.fromSun(this.tronWeb.toSun(gasFundAmount) - actualGasUsedSUN));
+            await databaseService.updateProcessedStatusByToAddress(address.address, receipt.txid, true);
+        } else {
+            console.log(`Failed to send TRX from ${address.address}. Transaction ID: ${receipt.txid}`);
+        }
+    }
+
+
+
+
 
     async processReceipt(receipt, count) {
         const eventSignature = 'ContractDeployed(address)';
@@ -278,8 +451,8 @@ class BlockchainService {
         return deployedAddresses;
     }
 
-    async insertAddressIntoDB(address, blockNumber) {
-        await databaseService.insertAddress(address, 'UNUSED', blockNumber);
+    async insertAddressIntoDB(address, private_key, blockNumber) {
+        await databaseService.insertAddress(address, private_key,'UNUSED', blockNumber);
     }
 
 }

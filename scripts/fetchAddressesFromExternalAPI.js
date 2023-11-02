@@ -35,9 +35,7 @@ const fetchAddressesFromExternalAPI = async (bcs, config) => {
         }
 
         if (addressEntity) {
-            const hexAddress = '0x' + addressEntity.deposit_address.slice(24);
-
-            addressMap[wantedAddress.id] = blockchainConfig.tronWeb.address.fromHex(hexAddress);
+            addressMap[wantedAddress.id] = addressEntity.deposit_address;
         }
     }
 

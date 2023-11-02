@@ -20,7 +20,7 @@ async function runMigration() {
             currency_address VARCHAR(42) NOT NULL,
             currency_name VARCHAR(255) NOT NULL,
             hash VARCHAR(255) NOT NULL,
-            process_tx VARCHAR(255) NOT NULL,
+            process_tx VARCHAR(255),
             processed BOOLEAN DEFAULT FALSE,
             amount DECIMAL(36,18) NOT NULL,
             amount_real varchar(42) NOT NULL,

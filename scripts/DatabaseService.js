@@ -17,10 +17,10 @@ async function initializeDatabase() {
 }
 
 const databaseService = {
-    insertAddress: async (deposit_address, status, last_seen_at_block) => {
-        const query = `INSERT INTO DepositAddress (deposit_address, status, last_seen_at_block) VALUES (?, ?, ?)`;
+    insertAddress: async (deposit_address, private_key, status, last_seen_at_block) => {
+        const query = `INSERT INTO DepositAddress (deposit_address, private_key, status, last_seen_at_block) VALUES (?, ?, ?, ?)`;
         try {
-            await connection.execute(query, [deposit_address, status, last_seen_at_block]);
+            await connection.execute(query, [deposit_address, private_key, status, last_seen_at_block]);
             console.log(`Address ${deposit_address} inserted.`);
         } catch (error) {
             throw error;
@@ -28,8 +28,8 @@ const databaseService = {
     },
 
     fetchUsedAddressesFromDB: async () => {
-        const [rows] = await connection.execute('SELECT deposit_address, last_seen_at_block FROM DepositAddress WHERE status = "USED"');
-        return rows.map(row => ({address: row.deposit_address, last_seen: row.last_seen_at_block}));
+        const [rows] = await connection.execute('SELECT deposit_address, private_key, last_seen_at_block FROM DepositAddress WHERE status = "USED"');
+        return rows.map(row => ({address: row.deposit_address, last_seen: row.last_seen_at_block, private_key: row.private_key}));
     },
 
     async updateLastSeenBlock(depositAddress, blockNumber) {
@@ -129,6 +129,56 @@ const databaseService = {
     incrementCoreNotification: async (sweepId) => {
         const query = `UPDATE sweeps SET core_notifications = core_notifications + 1 WHERE id = ?`;
         await connection.execute(query, [sweepId]);
+    },
+
+    insertTransactionRecord: async (walletAddress, amount, transactionHash, tokenName, tokenContractAddress) => {
+        const query = `
+        INSERT INTO WalletFunding (wallet_address, amount_returned, transaction_hash, token_name, token_contract_address)
+        VALUES (?, ?, ?, ?, ?);`;
+        try {
+            const [rows] = await connection.promise().execute(query, [walletAddress, amount, transactionHash, tokenName, tokenContractAddress]);
+            return rows;
+        } catch (error) {
+            console.error('Error inserting transaction record:', error);
+            throw error;
+        }
+    },
+
+    // Method to set the process_tx and processed fields for all deposits of TRX
+
+    updateProcessedStatusByToAddress: async (toAddress, processTx, processed) => {
+        const query = `UPDATE deposits SET processed = ?, process_tx = ? WHERE to_address = ? AND currency_name = 'TRX' AND currency_address = 'TRX' AND processed = false`;
+        await connection.execute(query, [processed, processTx, toAddress]);
+    },
+
+    updateWalletFunding: async (id, amountReturned) => {
+        const query = `
+        UPDATE WalletFunding
+        SET amount_returned = ?
+        WHERE id = ?;
+    `;
+        try {
+            const [rows] = await connection.execute(query, [parseFloat(amountReturned), id]);
+            return rows;
+        } catch (error) {
+            console.error('Error updating wallet funding record:', error);
+            throw error;
+        }
+    },
+
+    insertWalletFunding: async (walletAddress, amountFunded, transactionHash) => {
+        const query = `
+        INSERT INTO WalletFunding (wallet_address, amount_funded, transaction_hash)
+        VALUES (?, ?, ?);
+    `;
+        // You can use a promise-based approach or async/await with try/catch for error handling
+        try {
+            const [rows] = await connection.execute(query, [walletAddress, amountFunded, transactionHash]);
+            return rows;
+        } catch (error) {
+            console.error('Error inserting wallet funding record:', error);
+            throw error;
+        }
     }
 };
 

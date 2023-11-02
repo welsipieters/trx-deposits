@@ -21,27 +21,34 @@ const main = async () => {
     const bcs = new BlockchainService()
 
     // bcs.generateAddresses(2)
-    checkForTransfers(bcs)
 
+
+
+    // checkForTransfers(bcs)
     cron.schedule('*/2 * * * *', async () => {
-        checkForTransfers(bcs)
+        await checkForTransfers(bcs)
     });
 
     cron.schedule('*/2 * * * *', async () => {
-        bcs.sweepTokens()
+        await bcs.sweepTokens()
     });
 
     cron.schedule('*/2 * * * *', async () => {
-        bcs.notifySweeped(config)
+        await bcs.notifySweeped(config)
     });
 
 
     cron.schedule('*/2 * * * *', async () => {
-        fetchAddressesFromExternalAPI(bcs, config)
+        await bcs.sweepTokens()
+    });
+
+    cron.schedule('*/2 * * * *', async () => {
+        await fetchAddressesFromExternalAPI(bcs, config)
     });
 
     setTimeout(async () =>  {
-        fetchAddressesFromExternalAPI(bcs, config)
+        // await fetchAddressesFromExternalAPI(bcs, config)
+        // bcs.sweepTokens()
     }, 100)
 }
 
