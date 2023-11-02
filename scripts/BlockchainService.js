@@ -214,7 +214,7 @@ class BlockchainService {
             return;
         }
 
-        if (process.env.COLD_STORAGE_ADDRESS_TRON.toLowerCase() === depositData.fromAddress.toLowerCase()) {
+        if (this.tronWeb.address.fromPrivateKey(process.env.PRIVATE_KEY).toLowerCase() === depositData.fromAddress.toLowerCase()) {
             return;
         }
 
