@@ -25,24 +25,24 @@ const main = async () => {
 
 
     // checkForTransfers(bcs)
-    cron.schedule('*/2 * * * *', async () => {
+    cron.schedule('*/1 * * * *', async () => {
         await checkForTransfers(bcs)
     });
 
-    cron.schedule('*/2 * * * *', async () => {
+    cron.schedule('*/1 * * * *', async () => {
         await bcs.sweepTokens()
     });
 
-    cron.schedule('*/2 * * * *', async () => {
+    cron.schedule('*/1 * * * *', async () => {
         await bcs.notifySweeped(config)
     });
 
 
-    cron.schedule('*/2 * * * *', async () => {
+    cron.schedule('*/1 * * * *', async () => {
         await bcs.sweepTokens()
     });
 
-    cron.schedule('*/2 * * * *', async () => {
+    cron.schedule('*/1 * * * *', async () => {
         await fetchAddressesFromExternalAPI(bcs, config)
     });
 
