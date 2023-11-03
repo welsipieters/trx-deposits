@@ -4,7 +4,7 @@ const databaseService = require('./DatabaseService');
 const axios = require("axios");
 
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
-const MAX_ATTEMPTS = 100;  // Maximum number of attempts to check the transaction
+const MAX_ATTEMPTS = 250;  // Maximum number of attempts to check the transaction
 const DELAY_INTERVAL = 5000;  // Delay of 5 seconds between each check
 const tokenDecimalCache = {};
 
@@ -52,6 +52,12 @@ class BlockchainService {
         const addresses = await databaseService.fetchUsedAddressesFromDB();
 
         for (let address of addresses) {
+            if (address.processing === 1) {
+                continue;
+            }
+
+            await databaseService.updateProcessingStatusById(address.address, true);
+
             console.log(`Checking address ${address.address}`);
             const tokenEvents = await this.getPastEvents(address.address, address.last_seen, end);
             for (const event of tokenEvents) {
@@ -87,7 +93,7 @@ class BlockchainService {
                     'address': sweep.address,
                     'network': 'tron',
                     'currency': sweep.token_name,
-                    'txid': sweep.transactionHash,
+                    'txid': sweep.depositHash,
                     'amount': parseFloat(sweep.amount).toString(),
                     'confirmations': sweep.core_notifications+1
                 });
@@ -160,6 +166,9 @@ class BlockchainService {
             if (deposits.length === 0) {
                 continue;
             }
+
+            await databaseService.getDepositAddressStatus(address.address);
+            await databaseService.updateProcessingStatusByAddress(address.address, true)
 
             console.log(`Found ${deposits.length} unprocessed deposits for ${address.address}`);
 
@@ -344,29 +353,36 @@ class BlockchainService {
 
 
     async sweepERC20Tokens(deposit, address) {
-        const tokenContract = await this.tronWeb.contract().at(deposit.currency_address);
-        const tokenTransfer = await tokenContract.transfer(
-            process.env.COLD_STORAGE_ADDRESS_TRON,
-            deposit.amount_real
-        ).send({ feeLimit: FEE_LIMIT }, address.private_key);
-
-
-        console.log(`Sweeping ${deposit.amount} ${deposit.currency_name} from ${deposit.to_address}. Transaction ID: `, tokenTransfer);
         await databaseService.updateProcessedStatusByHash(deposit.hash, null, true);
 
-        await this.checkTransactionUntilConfirmed(tokenTransfer);
+        try {
+            const tokenContract = await this.tronWeb.contract().at(deposit.currency_address);
+            const tokenTransfer = await tokenContract.transfer(
+                process.env.COLD_STORAGE_ADDRESS_TRON,
+                deposit.amount_real
+            ).send({ feeLimit: FEE_LIMIT }, address.private_key);
 
-        const blockNumber = await this.getCurrentBlockNumber();
-        await databaseService.updateProcessedStatusByHash(deposit.hash, tokenTransfer, true);
-        await databaseService.insertSweep({
-            address: deposit.to_address,
-            amount: deposit.amount,
-            transactionHash: tokenTransfer,
-            token_name: deposit.currency_name,
-            tokenContractAddress: deposit.currency_address,
-            block: blockNumber,
-            core_notifications: 0
-        });
+
+            console.log(`Sweeping ${deposit.amount} ${deposit.currency_name} from ${deposit.to_address}. Transaction ID: `, tokenTransfer);
+
+            await this.checkTransactionUntilConfirmed(tokenTransfer);
+
+            const blockNumber = await this.getCurrentBlockNumber();
+            await databaseService.updateProcessedStatusByHash(deposit.hash, tokenTransfer, true);
+            await databaseService.insertSweep({
+                address: deposit.to_address,
+                amount: deposit.amount,
+                depositHash: deposit.hash,
+                transactionHash: tokenTransfer,
+                token_name: deposit.currency_name,
+                tokenContractAddress: deposit.currency_address,
+                block: blockNumber,
+                core_notifications: 0
+            });
+        } catch (error) {
+            console.error(`Error sweeping ${deposit.amount} ${deposit.currency_name} from ${deposit.to_address}:`, error);
+            await databaseService.updateProcessedStatusByHash(deposit.hash, null, false);
+        }
     }
 
 
@@ -413,6 +429,7 @@ class BlockchainService {
             await databaseService.insertSweep({
                 address: address.address,
                 amount: this.tronWeb.fromSun(netAmountSUN),
+                depositHash: fundingTransactionHash,
                 transactionHash: receipt.txid,
                 token_name: 'TRX',
                 tokenContractAddress: 'TRX',

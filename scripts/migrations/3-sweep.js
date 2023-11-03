@@ -36,5 +36,5 @@ async function runMigration() {
 }
 
 runMigration().catch(err => {
-    console.error('Failed to run migration:', err);
+    console.error('Failed to run migration:', err);QW
 });

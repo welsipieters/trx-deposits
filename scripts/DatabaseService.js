@@ -28,9 +28,16 @@ const databaseService = {
     },
 
     fetchUsedAddressesFromDB: async () => {
-        const [rows] = await connection.execute('SELECT deposit_address, private_key, last_seen_at_block FROM DepositAddress WHERE status = "USED"');
-        return rows.map(row => ({address: row.deposit_address, last_seen: row.last_seen_at_block, private_key: row.private_key}));
+        const [rows] = await connection.execute('SELECT deposit_address, private_key, processing, last_seen_at_block FROM DepositAddress WHERE status = "USED"');
+        return rows.map(row => ({address: row.deposit_address, last_seen: row.last_seen_at_block, processing: row.processing, private_key: row.private_key}));
     },
+
+    getDepositAddressStatus: async (depositAddress) => {
+        const query = `SELECT status, processing FROM DepositAddress WHERE deposit_address = ? LIMIT 1`;
+        const [rows] = await connection.execute(query, [depositAddress]);
+        return rows.length > 0 ? rows[0] : null; // Return the address status or null if not found
+    },
+
 
     async updateLastSeenBlock(depositAddress, blockNumber) {
         const query = `UPDATE DepositAddress 
@@ -101,12 +108,13 @@ const databaseService = {
 
     insertSweep: async (sweepData) => {
         const query = `INSERT INTO sweeps 
-                       (address, amount, transactionHash, token_name, tokenContractAddress, block, core_notifications) 
-                       VALUES (?, ?, ?, ?, ?, ?, ?)`;
+                       (address, amount, transactionHash, depositHash, token_name, tokenContractAddress, block, core_notifications) 
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`;
         try {
             await connection.execute(query, [
                 sweepData.address,
                 sweepData.amount,
+                sweepData.depositHash,
                 sweepData.transactionHash,
                 sweepData.token_name,
                 sweepData.tokenContractAddress,
@@ -118,6 +126,16 @@ const databaseService = {
         } catch (error) {
             throw error;
         }
+    },
+    updateProcessingStatusById: async (id, processing) => {
+        const query = `UPDATE DepositAddress SET processing = ? WHERE id = ?`;
+        await connection.execute(query, [processing, id]);
+    },
+
+
+    updateProcessingStatusByAddress: async (address, processing) => {
+        const query = `UPDATE DepositAddress SET processing = ? WHERE address = ?`;
+        await connection.execute(query, [processing, address]);
     },
 
     findSweepsForNotification: async () => {

@@ -9,6 +9,8 @@ const dbConfig = {
     database: process.env.DB_NAME
 };
 
+console.log(dbConfig);
+
 const connection = mysql.createConnection(dbConfig);
 
 connection.connect((err) => {
@@ -18,25 +20,25 @@ connection.connect((err) => {
     const checkColumnExistsQuery = `
     SELECT column_name
     FROM information_schema.columns
-    WHERE table_schema = DATABASE() AND table_name = 'DepositAddress' AND column_name = 'private_key';
+    WHERE table_schema = ? AND table_name = 'DepositAddress' AND column_name = 'processing';
     `;
 
-    connection.query(checkColumnExistsQuery, (error, results) => {
+    connection.query(checkColumnExistsQuery, [dbConfig.database], (error, results) => {
         if (error) throw error;
 
         if (results.length === 0) {
             // The column doesn't exist, add it
-            const addPrivateKeyColumnQuery = `
+            const addColumnQuery = `
             ALTER TABLE DepositAddress
-            ADD COLUMN private_key VARCHAR(255) NOT NULL AFTER deposit_address;
+                ADD COLUMN processing TINYINT NOT NULL DEFAULT 0;
             `;
 
-            connection.query(addPrivateKeyColumnQuery, (error) => {
+            connection.query(addColumnQuery, (error) => {
                 if (error) throw error;
-                console.log('private_key column added to DepositAddress table.');
+                console.log('Processing column added to DepositAddress table.');
             });
         } else {
-            console.log('private_key column already exists in DepositAddress table.');
+            console.log('Processing column already exists in DepositAddress table.');
         }
 
         connection.end();
