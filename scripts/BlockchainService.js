@@ -167,8 +167,12 @@ class BlockchainService {
                 continue;
             }
 
-            await databaseService.getDepositAddressStatus(address.address);
-            await databaseService.updateProcessingStatusByAddress(address.address, true)
+            const status = await databaseService.getDepositAddressStatus(address.address);
+            if (status.processing === 1) {
+                continue;
+            }
+
+            await databaseService.updateProcessingStatusByAddress(address.address, 1)
 
             console.log(`Found ${deposits.length} unprocessed deposits for ${address.address}`);
 
@@ -199,8 +203,13 @@ class BlockchainService {
 
             try {
                 await this.sweepTRX(address, fundingTransactionHash);
+
+                await databaseService.updateProcessingStatusByAddress(address.address, 0)
+
             } catch (e) {
                 console.error('Error during TRX sweep:', e);
+
+                await databaseService.updateProcessingStatusByAddress(address.address, 0)
             }
         }
     }
