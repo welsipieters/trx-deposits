@@ -287,6 +287,9 @@ class BlockchainService {
                     only_to: true,
                     only_confirmed: true,
                     limit: 30, // Adjust the limit as needed
+                },
+                headers: {
+                    'TRON-PRO-API-KEY': blockchainConfig.apiKey
                 }
             }).catch(error => {
                 console.error('Error fetching TRX transfers:', error);

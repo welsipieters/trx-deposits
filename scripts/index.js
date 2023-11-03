@@ -17,7 +17,7 @@ const main = async () => {
     const hexAddress = '0x66880e6a8c7d456b8f5600b81930f8f9fc6cd44b';
 
     const base58Address = blockchainConfig.tronWeb.address.fromHex(hexAddress);
-    console.log(base58Address)
+    // console.log(base58Address)
     const bcs = new BlockchainService()
 
     // bcs.generateAddresses(2)

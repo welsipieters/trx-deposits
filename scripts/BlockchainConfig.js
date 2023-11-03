@@ -9,7 +9,7 @@ const maxRequestsPerKey = 100;
 class BlockchainConfig {
     constructor() {
         this.network = process.env.BLOCKCHAIN_NETWORK || 'shasta'; // Default to Shasta testnet, for example
-
+        this.apiKey = process.env.TRONGRID_API_KEY;
         this.networkConfig = tronboxConfig.networks[this.network];
         if (!this.networkConfig) {
             throw new Error(`Network configuration not found for ${this.network}`);
