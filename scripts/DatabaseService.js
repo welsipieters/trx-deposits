@@ -71,7 +71,7 @@ const databaseService = {
 
 
     findUnprocessedDepositsByToAddress: async (toAddress) => {
-        const query = `SELECT * FROM deposits WHERE to_address = ? AND processed = false`;
+        const query = `SELECT * FROM deposits WHERE to_address = ? AND process_tx = NULL`;
         const [rows] = await connection.execute(query, [toAddress]);
         return rows;
     },
