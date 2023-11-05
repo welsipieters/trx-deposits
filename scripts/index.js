@@ -30,8 +30,8 @@ const main = async () => {
         await bcs.notifySweeped(config)
     });
 
-    cron.schedule('*/1 * * * *', async () => {
-        await fetchAddressesFromExternalAPI(bcs, config)
+    cron.schedule('*/15 * * * * *', async () => {
+        await fetchAddressesFromExternalAPI(bcs, config);
     });
 
     setTimeout(async () =>  {
