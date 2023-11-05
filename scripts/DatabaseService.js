@@ -101,7 +101,7 @@ const databaseService = {
             depositData.amount,
             depositData.amount_real
         ]);
-        return depositData;  // Return the inserted deposit data
+        return depositData;
     },
 
     insertSweep: async (sweepData) => {
@@ -112,8 +112,8 @@ const databaseService = {
             await connection.execute(query, [
                 sweepData.address,
                 sweepData.amount,
-                sweepData.depositHash,
                 sweepData.transactionHash,
+                sweepData.depositHash,
                 sweepData.token_name,
                 sweepData.tokenContractAddress,
                 sweepData.block,
