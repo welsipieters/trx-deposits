@@ -71,7 +71,7 @@ const databaseService = {
 
 
     findUnprocessedDepositsByToAddress: async (toAddress) => {
-        const query = `SELECT * FROM deposits WHERE to_address = ? AND process_tx = NULL`;
+        const query = `SELECT * FROM deposits WHERE to_address = ? AND process_tx IS NULL AND processed = false`;
         const [rows] = await connection.execute(query, [toAddress]);
         return rows;
     },
@@ -89,8 +89,8 @@ const databaseService = {
 
     insertDeposit: async (depositData) => {
         const query = `INSERT IGNORE INTO deposits 
-                       (block_number, from_address, to_address, currency_address, currency_name, hash, process_tx, processed, amount, amount_real) 
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+                       (block_number, from_address, to_address, currency_address, currency_name, hash,  amount, amount_real) 
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`;
         await connection.execute(query, [
             depositData.blockNumber,
             depositData.fromAddress,
@@ -98,8 +98,6 @@ const databaseService = {
             depositData.currencyAddress,
             depositData.currencyName,
             depositData.hash,
-            depositData.process_tx,
-            depositData.processed,
             depositData.amount,
             depositData.amount_real
         ]);
@@ -134,7 +132,7 @@ const databaseService = {
 
 
     updateProcessingStatusByAddress: async (address, processing) => {
-        const query = `UPDATE DepositAddress SET processing = ? WHERE address = ?`;
+        const query = `UPDATE DepositAddress SET processing = ? WHERE deposit_address = ?`;
         await connection.execute(query, [processing, address]);
     },
 
