@@ -327,6 +327,10 @@ class BlockchainService {
                     return;
                 }
 
+              if (  tx.raw_data.contract[0].type === "TransferAssetContract") {
+                  return;
+              }
+
                 return {
                     block_timestamp: tx.raw_data.timestamp,
                     from:  this.tronWeb.address.fromHex(tx.raw_data.contract[0].parameter.value.owner_address),
