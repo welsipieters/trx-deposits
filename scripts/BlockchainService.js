@@ -201,20 +201,45 @@ class BlockchainService {
                 }
             }
 
-            try {
-                await this.sweepTRX(address, fundingTransactionHash);
+            let didSweepTRX = false;
 
-                await databaseService.updateProcessingStatusByAddress(address.address, 0)
+            for (const deposit of deposits) {
+                if (deposit.currency_address !== 'TRX') {
+                    continue;
+                }
 
-            } catch (e) {
-                console.error('Error during TRX sweep:', e);
+                try {
+                    await this.sweepTRX(address, deposit, fundingTransactionHash);
+                    didSweepTRX = true;
 
-                await databaseService.updateProcessingStatusByAddress(address.address, 0)
+                    await databaseService.updateProcessingStatusByAddress(address.address, 0)
+
+                } catch (e) {
+                    console.error('Error during TRX sweep:', e);
+
+                    await databaseService.updateProcessingStatusByAddress(address.address, 0)
+                }
+            }
+
+            if (!didSweepTRX) {
+                try {
+                    await this.sweepTRX(address, null, fundingTransactionHash);
+                    await databaseService.updateProcessingStatusByAddress(address.address, 0)
+
+                } catch (e) {
+                    console.error('Error during TRX sweep:', e);
+
+                    await databaseService.updateProcessingStatusByAddress(address.address, 0)
+                }
             }
         }
     }
 
     async recordTrxTransferToDB(transfer) {
+        if (!transfer) {
+            return;
+        }
+
         const depositData = {
             blockNumber: transfer.block_timestamp,
             fromAddress: transfer.from,
@@ -252,7 +277,7 @@ class BlockchainService {
             currencyAddress: event.token_info.address,
             currencyName: event.token_info.symbol,
             hash: event.transaction_id,
-            process_tx: '',
+            process_tx: null,
             processed: false,
             amount: BigInt(event.value) / BigInt(10 ** event.token_info.decimals),
             amount_real: event.value
@@ -296,13 +321,20 @@ class BlockchainService {
             });
 
 
-            transfers = tx.data.data.map(tx => ({
-                block_timestamp: tx.raw_data.timestamp,
-                from:  this.tronWeb.address.fromHex(tx.raw_data.contract[0].parameter.value.owner_address),
-                to: address,
-                value: tx.raw_data.contract[0].parameter.value.amount,
-                transaction_id: tx.txID
-            }));
+            transfers = tx.data.data.map(tx => {
+
+                if (this.tronWeb.fromSun(tx.raw_data.contract[0].parameter.value.amount) < 1) {
+                    return;
+                }
+
+                return {
+                    block_timestamp: tx.raw_data.timestamp,
+                    from:  this.tronWeb.address.fromHex(tx.raw_data.contract[0].parameter.value.owner_address),
+                    to: address,
+                    value: tx.raw_data.contract[0].parameter.value.amount,
+                    transaction_id: tx.txID
+                }
+            });
         } catch (error) {
             console.error(`Error fetching TRX transfers for address ${address}:`, error);
         }
@@ -398,7 +430,7 @@ class BlockchainService {
     }
 
 
-    async sweepTRX(address, fundingTransactionHash) {
+    async sweepTRX(address, deposit, fundingTransactionHash) {
         if (!fundingTransactionHash) {
             throw new Error("Funding transaction hash is required.");
         }
@@ -411,57 +443,71 @@ class BlockchainService {
             throw new Error("Not enough balance to cover the gas fee.");
         }
 
-        // Calculate the amount to send by deducting the estimated gas fee
-        const amountToSendSUN = trxBalanceSUN - estimatedGasSUN;
+        let actualGasUsedSUN = 0;
+        let amountToSendForCustomer = 0;
 
-        console.log(`Sending ${this.tronWeb.fromSun(amountToSendSUN)} TRX from ${address.address} to cold storage`);
+        if (deposit) {
+            // Calculate the amount to send by deducting the estimated gas fee
+            amountToSendForCustomer = deposit.amount_real;
+            console.log(`Sending ${this.tronWeb.fromSun(amountToSendForCustomer)} TRX from ${address.address} to cold storage`);
 
+
+            const tradeobj = await this.tronWeb.transactionBuilder.sendTrx(
+                process.env.COLD_STORAGE_ADDRESS_TRON,
+                amountToSendForCustomer,
+                this.tronWeb.address.fromPrivateKey(address.private_key)
+            );
+            const signedtxn = await this.tronWeb.trx.sign(tradeobj, address.private_key);
+            const receipt = await this.tronWeb.trx.sendRawTransaction(signedtxn)
+
+            if (receipt.result === true) {
+                await this.checkTransactionUntilConfirmed(receipt.txid);
+                const txInfo = await this.tronWeb.trx.getTransactionInfo(receipt.txid);
+
+                console.log(txInfo)
+
+                actualGasUsedSUN = txInfo.receipt ? txInfo.receipt.net_fee : 0;
+                console.log(`Actual gas used: ${this.tronWeb.fromSun(actualGasUsedSUN)}`)
+
+                await databaseService.insertSweep({
+                    address: address.address,
+                    amount: this.tronWeb.fromSun(amountToSendForCustomer),
+                    depositHash: fundingTransactionHash,
+                    transactionHash: receipt.txid,
+                    token_name: 'TRX',
+                    tokenContractAddress: 'TRX',
+                    block: await this.getCurrentBlockNumber(),
+                    core_notifications: 0
+                });
+
+                console.log(`Sent ${this.tronWeb.fromSun(amountToSendForCustomer)} TRX to cold storage (net amount after gas). Transaction ID: ${receipt.txid}`);
+                await databaseService.updateProcessedStatusByToAddress(address.address, receipt.txid, true);
+            }
+        }
+
+        console.log(trxBalanceSUN, actualGasUsedSUN, amountToSendForCustomer)
+        const amountForGasRefund = trxBalanceSUN - (actualGasUsedSUN) - amountToSendForCustomer - estimatedGasSUN;
+        console.log(`Sending ${this.tronWeb.fromSun(amountForGasRefund)} TRX from ${address.address} to Gas lender`);
 
         const tradeobj = await this.tronWeb.transactionBuilder.sendTrx(
-            process.env.COLD_STORAGE_ADDRESS_TRON,
-            amountToSendSUN,
+            this.tronWeb.address.fromPrivateKey(process.env.PRIVATE_KEY),
+            amountForGasRefund,
             this.tronWeb.address.fromPrivateKey(address.private_key)
         );
+
         const signedtxn = await this.tronWeb.trx.sign(tradeobj, address.private_key);
-        const receipt = await this.tronWeb.trx.sendRawTransaction(signedtxn);
+        const refundReceipt = await this.tronWeb.trx.sendRawTransaction(signedtxn)
 
-        if (receipt.result === true) {
-            await this.checkTransactionUntilConfirmed(receipt.txid);
-            const txInfo = await this.tronWeb.trx.getTransactionInfo(receipt.txid);
-
-            console.log(txInfo)
-
-            const actualGasUsedSUN = txInfo.receipt ? txInfo.receipt.net_fee : 0;
-            console.log(`Actual gas used: ${this.tronWeb.fromSun(actualGasUsedSUN)}`)
-            //transform trx to SUN
-            const gasFund = this.tronWeb.toSun(gasFundAmount)
-            const remaingGasMoney = gasFund - actualGasUsedSUN
-            const netAmountSUN = amountToSendSUN - remaingGasMoney;
-
-            await databaseService.insertSweep({
-                address: address.address,
-                amount: this.tronWeb.fromSun(netAmountSUN),
-                depositHash: fundingTransactionHash,
-                transactionHash: receipt.txid,
-                token_name: 'TRX',
-                tokenContractAddress: 'TRX',
-                block: await this.getCurrentBlockNumber(),
-                core_notifications: 0
-            });
-            console.log(`Sent ${this.tronWeb.fromSun(netAmountSUN)} TRX to cold storage (net amount after gas) Remaining gas money: ${remaingGasMoney}. Transaction ID: ${receipt.txid}`);
-
-            // Update the WalletFunding record with the actual gas used
-            await databaseService.updateWalletFunding(fundingTransactionHash, this.tronWeb.fromSun(this.tronWeb.toSun(gasFundAmount) - actualGasUsedSUN));
-            await databaseService.updateProcessedStatusByToAddress(address.address, receipt.txid, true);
+        if (refundReceipt.result === true) {
+            await this.checkTransactionUntilConfirmed(refundReceipt.txid);
+            console.log(`Sent ${this.tronWeb.fromSun(amountForGasRefund)} TRX to Gas lender. Transaction ID: ${refundReceipt.txid}`);
         } else {
-            console.log(`Failed to send TRX from ${address.address}. Transaction ID: ${receipt.txid}`);
+            console.log(`Failed to send ${this.tronWeb.fromSun(amountForGasRefund)} TRX to Gas lender. Transaction ID: ${refundReceipt.txid}`);
         }
+
+        await databaseService.updateWalletFunding(fundingTransactionHash, this.tronWeb.fromSun(this.tronWeb.toSun(gasFundAmount) - actualGasUsedSUN));
+
     }
-
-
-
-
-
     async processReceipt(receipt, count) {
         const eventSignature = 'ContractDeployed(address)';
         const eventTopic = TronWeb.sha3(eventSignature).replace("0x", "");

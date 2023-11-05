@@ -16,8 +16,8 @@ const config = {
 
 const main = async () => {
     const bcs = new BlockchainService()
-
-    // checkForTransfers(bcs)
+    // bcs.generateAddresses(2);
+    checkForTransfers(bcs)
     cron.schedule('*/1 * * * *', async () => {
         await checkForTransfers(bcs)
     });
@@ -36,7 +36,7 @@ const main = async () => {
 
     setTimeout(async () =>  {
         // await fetchAddressesFromExternalAPI(bcs, config)
-        // bcs.sweepTokens()
+        bcs.sweepTokens()
     }, 100)
 }
 
