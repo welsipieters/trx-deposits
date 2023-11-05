@@ -6,8 +6,7 @@ const fetchAddressesFromExternalAPI = async (bcs, config) => {
     const setEndpoint = 'set-deposit-addresses';
     const params = {
         walletAPIKey: config.keys.admin,
-        network: 'TRON',
-        currency: 'trx'
+        network: 'tron',
     };
 
     // Fetch the wanted addresses
