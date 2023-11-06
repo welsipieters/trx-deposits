@@ -20,32 +20,32 @@ connection.connect((err) => {
     const checkColumnExistsQuery = `
     SELECT column_name
     FROM information_schema.columns
-    WHERE table_schema = ? AND table_name = 'sweeps' AND column_name = 'depositHash';
+    WHERE table_schema = ? AND table_name = 'WalletFunding' AND column_name = 'processed';
     `;
 
     connection.query(checkColumnExistsQuery, [dbConfig.database], (error, results) => {
         if (error) {
-            console.error('Error checking for depositHash column:', error);
+            console.error('Error checking for processed column:', error);
             return connection.end();
         }
 
         if (results.length === 0) {
             // The column doesn't exist, add it
             const alterTableQuery = `
-            ALTER TABLE sweeps
-                ADD COLUMN depositHash VARCHAR(66) NULL;
+            ALTER TABLE WalletFunding
+                ADD COLUMN processed BOOLEAN DEFAULT FALSE;
             `;
 
             connection.query(alterTableQuery, (alterError) => {
                 if (alterError) {
-                    console.error('Error adding depositHash column:', alterError);
+                    console.error('Error adding processed column:', alterError);
                 } else {
-                    console.log('depositHash column added to sweeps table.');
+                    console.log('processed column added to WalletFunding table.');
                 }
                 connection.end();
             });
         } else {
-            console.log('depositHash column already exists in sweeps table.');
+            console.log('processed column already exists in WalletFunding table.');
             connection.end();
         }
     });

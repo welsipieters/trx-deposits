@@ -26,10 +26,10 @@ const fetchAddressesFromExternalAPI = async (bcs, config) => {
 
         if (!addressEntity) {
             bcs.generateAddresses(parseInt(process.env.BATCH_SIZE || '10')).catch((error) => {
-                console.error('Error generating addresses:', error);
+                console.error('[fetchAddressesFromExternalAPI] Error generating addresses:', error);
             });
 
-            console.log(`Ran out of addresses. Generated new batch of addresses`);
+            console.log(`[fetchAddressesFromExternalAPI] Ran out of addresses. Generated new batch of addresses`);
             break;
         }
 
@@ -40,7 +40,7 @@ const fetchAddressesFromExternalAPI = async (bcs, config) => {
 
     // Send the address map back to the external API
     if (Object.keys(addressMap).length === 0) {
-        console.log('No addresses to set');
+        console.log('[fetchAddressesFromExternalAPI] No addresses to set');
         return;
     }
 
@@ -54,7 +54,7 @@ const fetchAddressesFromExternalAPI = async (bcs, config) => {
         }
     });
 
-    console.log('Successfully set addresses', setAddressResponse.statusText, setAddressResponse.status, setAddressResponse.data);
+    console.log('[fetchAddressesFromExternalAPI] Successfully set addresses', setAddressResponse.statusText, setAddressResponse.status, setAddressResponse.data);
 };
 
 module.exports = fetchAddressesFromExternalAPI;

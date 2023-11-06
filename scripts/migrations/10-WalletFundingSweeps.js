@@ -1,4 +1,4 @@
-require('dotenv').config()
+require('dotenv').config();
 const mysql = require('mysql2');
 
 const dbConfig = {
@@ -9,7 +9,7 @@ const dbConfig = {
     database: process.env.DB_NAME
 };
 
-
+;
 
 const connection = mysql.createConnection(dbConfig);
 
@@ -18,18 +18,19 @@ connection.connect((err) => {
     console.log('Connected to the database.');
 
     const createTableQuery = `
-    CREATE TABLE IF NOT EXISTS DepositAddress (
+    CREATE TABLE IF NOT EXISTS WalletFundingSweeps (
         id INT AUTO_INCREMENT PRIMARY KEY,
-        deposit_address VARCHAR(255) NOT NULL,
-        status ENUM('UNUSED', 'USED') NOT NULL DEFAULT 'UNUSED',
+        wallet_funding_id INT NOT NULL,
+        sweep_id INT NOT NULL,
+        FOREIGN KEY (wallet_funding_id) REFERENCES walletFunding(id),
+        FOREIGN KEY (sweep_id) REFERENCES sweeps(id),
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        last_seen_at_block BIGINT
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
     );`;
 
     connection.query(createTableQuery, (error) => {
         if (error) throw error;
-        console.log('DepositAddress table created or already exists.');
+        console.log('WalletFundingSweeps table created or already exists.');
         connection.end();
     });
 });

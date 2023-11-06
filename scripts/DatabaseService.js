@@ -27,6 +27,26 @@ const databaseService = {
         }
     },
 
+    findDepositAddressByAddress: async (address) => {
+        const query = 'SELECT * FROM DepositAddress WHERE deposit_address = ? LIMIT 1';
+
+        try {
+            const [rows] = await connection.execute(query, [address]);
+            if (rows.length > 0) {
+                // Return the first matching row (or null if no match)
+                return rows[0];
+            } else {
+                // No matching row found
+                return null;
+            }
+        } catch (error) {
+            // Handle the error (e.g., log or throw)
+            console.error('Error finding deposit address by address:', error);
+            throw error;
+        }
+    },
+
+
     fetchUsedAddressesFromDB: async () => {
         const [rows] = await connection.execute('SELECT deposit_address, private_key, processing, last_seen_at_block FROM DepositAddress WHERE status = "USED"');
         return rows.map(row => ({address: row.deposit_address, last_seen: row.last_seen_at_block, processing: row.processing, private_key: row.private_key}));
@@ -106,10 +126,10 @@ const databaseService = {
 
     insertSweep: async (sweepData) => {
         const query = `INSERT INTO sweeps 
-                       (address, amount, transactionHash, depositHash, token_name, tokenContractAddress, block, core_notifications) 
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`;
+                   (address, amount, transactionHash, depositHash, token_name, tokenContractAddress, block, core_notifications) 
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)`;
         try {
-            await connection.execute(query, [
+            const [result] = await connection.execute(query, [
                 sweepData.address,
                 sweepData.amount,
                 sweepData.transactionHash,
@@ -119,12 +139,23 @@ const databaseService = {
                 sweepData.block,
                 sweepData.core_notifications
             ]);
-            console.log(`Sweep for address ${sweepData.address} and transaction ${sweepData.transactionHash} inserted.`);
-            return sweepData;  // Return the inserted sweep data
+
+            // Extract the ID of the newly inserted row
+            const insertedId = result.insertId;
+
+            // Create an object containing the inserted sweep data and its ID
+            const insertedSweepData = {
+                id: insertedId,
+                ...sweepData  // Include all other sweepData fields
+            };
+
+            console.log(`[DB][insertSweep] Sweep for address ${sweepData.address} and transaction ${sweepData.transactionHash} inserted.`);
+            return insertedSweepData;  // Return the inserted sweep data
         } catch (error) {
             throw error;
         }
     },
+
     updateProcessingStatusById: async (id, processing) => {
         const query = `UPDATE DepositAddress SET processing = ? WHERE id = ?`;
         await connection.execute(query, [processing, id]);
@@ -137,9 +168,80 @@ const databaseService = {
     },
 
     findSweepsForNotification: async () => {
-        const query = `SELECT * FROM sweeps WHERE core_notifications < 5`;
+        const query = `SELECT * FROM sweeps WHERE core_notifications < 5 AND processed = 1`;
         const [rows] = await connection.execute(query);
         return rows;
+    },
+
+    attachSweepToWalletFundingById: async (sweepId, walletFundingId) => {
+        const query = `
+        INSERT INTO WalletFundingSweeps (wallet_funding_id, sweep_id)
+        VALUES (?, ?)
+    `;
+        await connection.execute(query, [walletFundingId, sweepId]);
+    },
+
+    fetchAllUnprocessedWalletFunding: async () => {
+        const query = `SELECT * FROM WalletFunding WHERE processed = 0 AND refund_hash IS NULL`;
+        const [rows] = await connection.execute(query);
+        return rows;
+    },
+
+    fetchAllPendingRefunds: async () => {
+        const query = `SELECT * FROM WalletFunding WHERE processed = 0 AND refund_hash IS NOT NULL`;
+        const [rows] = await connection.execute(query);
+        return rows;
+    },
+
+
+
+    fetchSweepIdsByWalletFundingId: async (walletFundingId) => {
+        try {
+            const query = `
+            SELECT sweep_id
+            FROM WalletFundingSweeps
+            WHERE wallet_funding_id = ?
+        `;
+            const [rows] = await connection.execute(query, [walletFundingId]);
+            const sweepIds = rows.map((row) => row.sweep_id);
+            return sweepIds;
+        } catch (error) {
+            throw error;
+        }
+    },
+
+
+    findUnprocessedSweeps: async () => {
+        const query = `SELECT * FROM sweeps WHERE processed = 0`;
+        const [rows] = await connection.execute(query);
+        return rows;
+    },
+
+    fetchSweepById: async (sweepId) => {
+        try {
+            const query = `SELECT *
+            FROM sweeps
+            WHERE id = ?`;
+
+            const [rows] = await connection.execute(query, [sweepId]);
+            if (rows.length === 0) {
+                return null;
+            }
+            return rows[0];
+        } catch (error) {
+            throw error;
+        }
+    },
+
+    updateSweepProcessedStatus: async (sweepId, processedStatus) => {
+        const updateQuery = `UPDATE sweeps SET processed = ? WHERE id = ?`;
+
+        try {
+            await connection.execute(updateQuery, [processedStatus, sweepId]);
+
+        } catch (error) {
+            console.error(`Error updating sweep with ID ${sweepId}:`, error);
+        }
     },
 
     incrementCoreNotification: async (sweepId) => {
@@ -167,14 +269,37 @@ const databaseService = {
         await connection.execute(query, [processed, processTx, toAddress]);
     },
 
-    updateWalletFunding: async (id, amountReturned) => {
-        const query = `
-        UPDATE WalletFunding
-        SET amount_returned = ?
-        WHERE id = ?;
-    `;
+    updateWalletFunding: async (id, options) => {
+        // Create a base update query
+        let query = 'UPDATE WalletFunding SET';
+
+        // Create an array to store the values that need to be updated
+        const updateValues = [];
+
+        // Check for each property in options and add it to the query and updateValues array if provided
+        if (options.amountReturned !== undefined) {
+            query += ' amount_returned = ?,';
+            updateValues.push(parseFloat(options.amountReturned));
+        }
+
+        if (options.refundHash !== undefined) {
+            query += ' refund_hash = ?,';
+            updateValues.push(options.refundHash);
+        }
+
+        if (options.processed !== undefined) {
+            query += ' processed = ?,';
+            updateValues.push(options.processed);
+        }
+
+        // Remove the trailing comma and add the WHERE clause
+        query = query.slice(0, -1) + ' WHERE id = ?';
+
+        // Add the id to the updateValues array
+        updateValues.push(id);
+
         try {
-            const [rows] = await connection.execute(query, [parseFloat(amountReturned), id]);
+            const [rows] = await connection.execute(query, updateValues);
             return rows;
         } catch (error) {
             console.error('Error updating wallet funding record:', error);
@@ -182,20 +307,30 @@ const databaseService = {
         }
     },
 
+
     insertWalletFunding: async (walletAddress, amountFunded, transactionHash) => {
         const query = `
         INSERT INTO WalletFunding (wallet_address, amount_funded, transaction_hash)
         VALUES (?, ?, ?);
     `;
-        // You can use a promise-based approach or async/await with try/catch for error handling
         try {
-            const [rows] = await connection.execute(query, [walletAddress, amountFunded, transactionHash]);
-            return rows;
+            const [result] = await connection.execute(query, [walletAddress, amountFunded, transactionHash]);
+            // Extract the ID of the newly inserted row
+            const insertedId = result.insertId;
+
+            // Create an object containing the funding record and its ID
+            return {
+                id: insertedId,
+                wallet_address: walletAddress,
+                amount_funded: amountFunded,
+                transaction_hash: transactionHash
+            };
         } catch (error) {
             console.error('Error inserting wallet funding record:', error);
             throw error;
         }
     }
+
 };
 
 // Initialize the database on startup
