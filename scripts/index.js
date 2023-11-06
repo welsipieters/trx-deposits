@@ -17,40 +17,40 @@ const config = {
 const main = async () => {
     const bcs = new BlockchainService()
 
-    // cron.schedule('*/15 * * * * *', async () => {
-    //     await checkForTransfers(bcs)
-    // });
-    //
-    // cron.schedule('*/1 * * * *', async () => {
-    //     await bcs.sweepTokens()
-    // });
-    //
-    // cron.schedule('*/1 * * * *', async () => {
-    //     await bcs.processGasRefunds()
-    // });
-    //
-    // cron.schedule('*/30 * * * * *', async () => {
-    //     await bcs.ensureRefunds()
-    // });
-    //
-    // cron.schedule('*/1 * * * *', async () => {
-    //     await bcs.processSweeps()
-    // });
-    //
-    // cron.schedule('*/15 * * * * *', async () => {
-    //     await bcs.notifySweeped(config)
-    // });
-    //
-    // cron.schedule('*/15 * * * * *', async () => {
-    //     await fetchAddressesFromExternalAPI(bcs, config);
-    // });
+    cron.schedule('*/15 * * * * *', async () => {
+        await checkForTransfers(bcs)
+    });
+
+    cron.schedule('*/1 * * * *', async () => {
+        await bcs.sweepTokens()
+    });
+
+    cron.schedule('*/1 * * * *', async () => {
+        await bcs.processGasRefunds()
+    });
+
+    cron.schedule('*/30 * * * * *', async () => {
+        await bcs.ensureRefunds()
+    });
+
+    cron.schedule('*/1 * * * *', async () => {
+        await bcs.processSweeps()
+    });
+
+    cron.schedule('*/15 * * * * *', async () => {
+        await bcs.notifySweeped(config)
+    });
+
+    cron.schedule('*/15 * * * * *', async () => {
+        await fetchAddressesFromExternalAPI(bcs, config);
+    });
 
     setTimeout(async () =>  {
         // await fetchAddressesFromExternalAPI(bcs, config)
         // bcs.generateAddresses(2);
         // checkForTransfers(bcs)
         // bcs.sweepTokens()
-        bcs.processSweeps()
+        // bcs.processSweeps()
         // bcs.processGasRefunds()
         // bcs.ensureRefunds()
     }, 100)
