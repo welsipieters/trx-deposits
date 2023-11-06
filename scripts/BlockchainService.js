@@ -99,6 +99,9 @@ class BlockchainService {
                 });
             }
 
+            console.log("[notifySweeped] Deposits to send to core:", deposits.length)
+            console.log('[notifySweeped] Request body:', deposits);
+
             try {
                 // Make the API call to post the transactions
                 const response = await axios.post(`${config.knakenURL}${endpoint}`, { deposits,  walletAPIKey: config.keys.admin, }, {
@@ -546,6 +549,37 @@ class BlockchainService {
                 console.error('Error processing sweep:', e);
             }
         }
+    }
+
+    async emegencySweep() {
+
+    }
+
+    async emergencySweepERC20(address, token) {
+        const wallet = await databaseService.findDepositAddressByAddress(address);
+
+
+    }
+
+    async emegencySweepTRX(address) {
+        const wallet = await databaseService.findDepositAddressByAddress(address);
+        const trxBalanceSUN = await this.tronWeb.trx.getBalance(wallet.address);
+        const estimatedGasSUN = this.tronWeb.toSun(process.env.ESTIMATED_GAS_FEE_TRON);
+
+        const tradeobj = await this.tronWeb.transactionBuilder.sendTrx(
+            process.env.COLD_STORAGE_ADDRESS_TRON,
+            trxBalanceSUN-estimatedGasSUN,
+            this.tronWeb.address.fromPrivateKey(wallet.private_key)
+        );
+
+        const signedtxn = await this.tronWeb.trx.sign(tradeobj, address.private_key);
+        const receipt = await this.tronWeb.trx.sendRawTransaction(signedtxn)
+
+        if (receipt.result === true) {
+            console.log('[Emergency Sweep]')
+            console.log(`[emegencySweepTRX] Sent ${this.tronWeb.fromSun(trxBalanceSUN-estimatedGasSUN)} TRX from ${wallet.address} to cold storage`);
+        }
+
     }
 
     async sweepTRX(address, deposit, funding) {
