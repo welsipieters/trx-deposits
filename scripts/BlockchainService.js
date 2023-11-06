@@ -91,7 +91,7 @@ class BlockchainService {
             for (const sweep of sweepsToNotify) {
                 deposits.push({
                     'address': sweep.address,
-                    'network': 'tron',
+                    'network': 'TRON',
                     'currency': sweep.token_name,
                     'txid': sweep.depositHash,
                     'amount': parseFloat(sweep.amount).toString(),
