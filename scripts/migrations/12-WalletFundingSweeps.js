@@ -22,8 +22,6 @@ connection.connect((err) => {
         id INT AUTO_INCREMENT PRIMARY KEY,
         wallet_funding_id INT NOT NULL,
         sweep_id INT NOT NULL,
-        FOREIGN KEY (wallet_funding_id) REFERENCES walletFunding(id),
-        FOREIGN KEY (sweep_id) REFERENCES sweeps(id),
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
     );`;
