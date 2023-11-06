@@ -17,7 +17,7 @@ const config = {
 const main = async () => {
     const bcs = new BlockchainService()
 
-    cron.schedule('*/1 * * * *', async () => {
+    cron.schedule('*/15 * * * * *', async () => {
         await checkForTransfers(bcs)
     });
 
@@ -29,7 +29,7 @@ const main = async () => {
         await bcs.processGasRefunds()
     });
 
-    cron.schedule('*/1 * * * *', async () => {
+    cron.schedule('*/30 * * * * *', async () => {
         await bcs.ensureRefunds()
     });
 
@@ -37,7 +37,7 @@ const main = async () => {
         await bcs.processSweeps()
     });
 
-    cron.schedule('*/1 * * * *', async () => {
+    cron.schedule('*/15 * * * * *', async () => {
         await bcs.notifySweeped(config)
     });
 

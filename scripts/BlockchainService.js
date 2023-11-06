@@ -540,6 +540,9 @@ class BlockchainService {
                     throw new Error('[processSweeps] Failed to confirm sweep transaction. Hash:', sweep.transactionHash);
                 }
             } catch (e) {
+
+                await databaseService.updateProcessedStatusByHash(sweep.depositHash, null, true);
+                await databaseService.updateSweepProcessedStatus(sweep.id, false);
                 console.error('Error processing sweep:', e);
             }
         }
