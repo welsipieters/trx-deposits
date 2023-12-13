@@ -109,19 +109,24 @@ const databaseService = {
 
     insertDeposit: async (depositData) => {
         const query = `INSERT IGNORE INTO deposits 
-                       (block_number, from_address, to_address, currency_address, currency_name, hash,  amount, amount_real) 
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`;
-        await connection.execute(query, [
+                       (block_number, from_address, to_address, currency_address, currency_name, processed, hash,  amount, amount_real) 
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+        const [result] = await connection.execute(query, [
             depositData.blockNumber,
             depositData.fromAddress,
             depositData.toAddress,
             depositData.currencyAddress,
             depositData.currencyName,
+            depositData.processed,
             depositData.hash,
             depositData.amount,
             depositData.amount_real
         ]);
-        return depositData;
+        const insertedId = result.insertId;
+        const insertedSweepData = {
+            id: insertedId,
+            ...depositData  // Include all other sweepData fields
+        };
     },
 
     insertSweep: async (sweepData) => {

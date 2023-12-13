@@ -8,13 +8,15 @@
   },
   "scripts": {
     "start": "node scripts/index.js",
-    "migrate": "node ./scripts/run-migrations.js"
+    "migrate": "node ./scripts/run-migrations.js",
+    "processBlocks": "node ./scripts/processTransaction.js"
   },
   "author": "",
   "license": "ISC",
   "dependencies": {
     "@openzeppelin/contracts": "4.9.3",
     "axios": "^1.5.1",
+    "commander": "^11.1.0",
     "dotenv": "^16.3.1",
     "mysql": "^2.18.1",
     "mysql2": "^3.6.2",

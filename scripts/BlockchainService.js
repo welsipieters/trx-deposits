@@ -158,30 +158,36 @@ class BlockchainService {
         }
     }
 
-    async sweepTokens() {
-        const addresses = await databaseService.fetchUsedAddressesFromDB();
+    async sweepTokens(addresses = null, deposits = null) {
+        if (!addresses) {
+            addresses = await databaseService.fetchUsedAddressesFromDB();
+        }
+
         const gasFundAmount = process.env.GAS_FUND_AMOUNT_TRON;
 
         for (const address of addresses) {
-            const deposits = await databaseService.findUnprocessedDepositsByToAddress(address.address);
+            if (!deposits) {
+                deposits = await databaseService.findUnprocessedDepositsByToAddress(address.address);
+            }
 
             if (deposits.length === 0) {
+                console.log(`[sweepTokens] No unprocessed deposits found for ${address.address}`)
                 continue;
             }
 
             const status = await databaseService.getDepositAddressStatus(address.address);
-            if (status.processing === 1) {
+            if ((!addresses && !deposits ) || status && status.processing === 1) {
+                console.log(`[sweepTokens] Address ${address.address} is already being processed. Skipping.`);
                 continue;
             }
 
             await databaseService.updateProcessingStatusByAddress(address.address, 1)
-
+            let fundingTransactionHash
             console.log(`[sweepTokens] Found ${deposits.length} unprocessed deposits for ${address.address}`);
-
             let funding;
             try {
                 const fundingReceipt = await this.fundWalletForGas(address.address, gasFundAmount);
-                const fundingTransactionHash = fundingReceipt.txid;
+                 fundingTransactionHash = fundingReceipt.txid;
 
                 funding = await databaseService.insertWalletFunding(address.address, gasFundAmount, fundingTransactionHash);
             } catch (e) {
@@ -211,11 +217,12 @@ class BlockchainService {
             let didSweepTRX = false;
 
             for (const deposit of deposits) {
+                console.log('deposit', deposit)
                 if (deposit.currency_address !== 'TRX') {
                     continue;
                 }
-
                 try {
+                    console.log('pre sweep', deposit, funding)
                     await this.sweepTRX(address, deposit, funding);
                     didSweepTRX = true;
 
@@ -229,20 +236,20 @@ class BlockchainService {
             }
 
             if (!didSweepTRX) {
-                try {
-                    await this.sweepTRX(address, null, fundingTransactionHash);
-                    await databaseService.updateProcessingStatusByAddress(address.address, 0)
-
-                } catch (e) {
-                    console.error('[sweepTokens] Error during TRX sweep:', e);
-
-                    await databaseService.updateProcessingStatusByAddress(address.address, 0)
-                }
+                // try {
+                //     await this.sweepTRX(address, null, fundingTransactionHash);
+                //     await databaseService.updateProcessingStatusByAddress(address.address, 0)
+                //
+                // } catch (e) {
+                //     console.error('[sweepTokens] Error during TRX sweep:', e);
+                //
+                //     await databaseService.updateProcessingStatusByAddress(address.address, 0)
+                // }
             }
         }
     }
 
-    async recordTrxTransferToDB(transfer) {
+    async recordTrxTransferToDB(transfer, processed = false) {
         if (!transfer) {
             return;
         }
@@ -255,7 +262,7 @@ class BlockchainService {
             currencyName: 'TRX',
             hash: transfer.transaction_id,
             process_tx: '',
-            processed: false,
+            processed,
             amount: BigInt(transfer.value) / BigInt(1e6),
             amount_real: transfer.value
         };
@@ -272,11 +279,11 @@ class BlockchainService {
         const deposit = await databaseService.findDepositByHash(depositData.hash);
         if (!deposit) {
             console.log(`[recordTrxTransferToDB Recording TRX transaction for wallet ${depositData.toAddress}`);
-            await databaseService.insertDeposit(depositData);
+            return await databaseService.insertDeposit(depositData);
         }
     }
 
-    async recordTransferToDB(event) {
+    async recordTransferToDB(event, processed = false) {
         const depositData = {
             blockNumber: event.block_timestamp,
             fromAddress: event.from,
@@ -285,7 +292,7 @@ class BlockchainService {
             currencyName: event.token_info.symbol,
             hash: event.transaction_id,
             process_tx: null,
-            processed: false,
+            processed: false ? 0 : 1,
             amount: BigInt(event.value) / BigInt(10 ** event.token_info.decimals),
             amount_real: event.value
         };
@@ -304,7 +311,7 @@ class BlockchainService {
         if (!deposit) {
             console.log(`[recordTransferToDB] Recording transaction of token ${depositData.currencyName} for wallet ${depositData.toAddress}`)
 
-            await databaseService.insertDeposit(depositData);
+            return await databaseService.insertDeposit(depositData);
         }
 
     }
@@ -339,6 +346,7 @@ class BlockchainService {
               }
 
                 return {
+                  block_number: tx.blockNumber,
                     block_timestamp: tx.raw_data.timestamp,
                     from:  this.tronWeb.address.fromHex(tx.raw_data.contract[0].parameter.value.owner_address),
                     to: address,
@@ -583,6 +591,7 @@ class BlockchainService {
     }
 
     async sweepTRX(address, deposit, funding) {
+        console.log('address', address, deposit)
         if (!funding) {
             throw new Error("[sweepTRX] Funding is required.");
         }
